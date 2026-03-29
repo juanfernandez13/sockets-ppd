@@ -416,6 +416,8 @@ public class GameWindow extends JFrame {
         JOptionPane.showMessageDialog(this, body, "Fim de Jogo",
             winner == myPlayer ? JOptionPane.INFORMATION_MESSAGE
                                : JOptionPane.WARNING_MESSAGE);
+        dispose();
+        Dara.showLaunchDialog();
     }
 
     public void setStatus(String s) {
