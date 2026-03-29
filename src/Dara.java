@@ -2,8 +2,19 @@ import java.awt.*;
 import javax.swing.*;
 import javax.swing.border.*;
 
+/**
+ * Ponto de entrada do programa.
+ *
+ * Exibe a tela de conexão onde o usuário informa host, porta e nome.
+ * A detecção de servidor/cliente acontece automaticamente em Connection.java:
+ * quem abrir a porta primeiro vira servidor (Jogador 1), quem abrir depois vira cliente (Jogador 2).
+ *
+ * A conexão TCP é feita em um SwingWorker (thread de background) para não
+ * travar a EDT (Event Dispatch Thread) enquanto aguarda o outro jogador.
+ */
 public class Dara {
 
+    // Paleta de cores usada nesta tela e compartilhada com GameWindow
     static final Color BG      = new Color(22,  27,  42);
     static final Color CARD    = new Color(32,  39,  60);
     static final Color BORDER  = new Color(55,  68, 100);
@@ -11,11 +22,19 @@ public class Dara {
     static final Color TEXT    = Color.WHITE;
     static final Color SUBTEXT = new Color(140, 155, 195);
 
+    /**
+     * Ponto de entrada da JVM.
+     * Usa invokeLater para garantir que toda a UI seja criada na EDT.
+     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(Dara::showLaunchDialog);
     }
 
-    // Estático para poder ser chamado do GameWindow (ROOM_FULL)
+    /**
+     * Exibe a janela de conexão.
+     * É estático para poder ser chamado pelo GameWindow quando a sala está cheia (ROOM_FULL)
+     * ou quando o jogo termina e o jogador quer iniciar uma nova partida.
+     */
     public static void showLaunchDialog() {
         JFrame frame = new JFrame("Dara — Iniciar Partida");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -39,14 +58,14 @@ public class Dara {
         header.add(sub);
         root.add(header, BorderLayout.NORTH);
 
-        // ── Cards: FORM e WAIT ───────────────────────────────────────────────
+        // ── CardLayout: alterna entre FORM e WAIT sem fechar a janela ────────
         CardLayout cardLayout = new CardLayout();
         JPanel cards = new JPanel(cardLayout);
         cards.setBackground(BG);
         cards.add(buildForm(frame, cards, cardLayout), "FORM");
         root.add(cards, BorderLayout.CENTER);
 
-        // ── Rodapé ───────────────────────────────────────────────────────────
+        // ── Rodapé informativo ───────────────────────────────────────────────
         JLabel note = new JLabel(
             "<html><center><font color='#7a8ab0'>"
             + "O modo (Servidor / Cliente) é detectado automaticamente pela porta.<br>"
@@ -61,7 +80,10 @@ public class Dara {
         frame.setVisible(true);
     }
 
-    // ── Painel do formulário ──────────────────────────────────────────────────
+    /**
+     * Constrói o formulário de entrada com campos host, porta e nome.
+     * Ao clicar em "Entrar", valida a porta e chama startConnection().
+     */
     private static JPanel buildForm(JFrame frame, JPanel cards, CardLayout cardLayout) {
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(CARD);
@@ -88,6 +110,7 @@ public class Dara {
             try {
                 String host = hostField.getText().trim();
                 int    port = Integer.parseInt(portField.getText().trim());
+                // Usa "Jogador" como padrão se o nome estiver vazio
                 String name = nameField.getText().trim().isEmpty()
                               ? "Jogador" : nameField.getText().trim();
                 startConnection(frame, cards, cardLayout, host, port, name);
@@ -102,13 +125,22 @@ public class Dara {
         return form;
     }
 
-    // ── Inicia conexão e mostra painel de espera ──────────────────────────────
+    /**
+     * Inicia a conexão TCP em background (SwingWorker) e exibe o painel de espera.
+     *
+     * O SwingWorker tem duas partes:
+     *   - doInBackground(): roda fora da EDT, faz a conexão bloqueante
+     *   - done(): volta para a EDT, abre o GameWindow ou exibe erro
+     *
+     * Isso evita que a interface congele enquanto aguarda o outro jogador conectar.
+     */
     private static void startConnection(JFrame frame, JPanel cards, CardLayout cardLayout,
                                         String host, int port, String name) {
         JLabel statusLbl = new JLabel("Verificando porta " + port + "...", SwingConstants.CENTER);
         statusLbl.setFont(new Font("SansSerif", Font.PLAIN, 12));
         statusLbl.setForeground(SUBTEXT);
 
+        // connRef[0] permite que o botão Cancelar acesse a conexão criada logo abaixo
         Connection[] connRef = {null};
 
         JPanel waitPanel = buildWaitPanel(port, statusLbl, connRef, () -> {
@@ -125,13 +157,15 @@ public class Dara {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
+                // Bloqueante: fica aqui até conectar ou lançar exceção
                 conn.connectTCP(s -> SwingUtilities.invokeLater(() -> statusLbl.setText(s)));
                 return null;
             }
             @Override
             protected void done() {
+                // Chamado na EDT após doInBackground() terminar
                 try {
-                    get();
+                    get(); // relança exceção de doInBackground, se houver
                     frame.dispose();
                     @SuppressWarnings("unused")
                     GameWindow gw = new GameWindow(conn, conn.isServer(), name);
@@ -153,7 +187,10 @@ public class Dara {
         }.execute();
     }
 
-    // ── Painel de aguardo ────────────────────────────────────────────────────
+    /**
+     * Constrói o painel de espera exibido enquanto a conexão TCP está sendo estabelecida.
+     * Mostra barra de progresso indeterminada, status de conexão e botão Cancelar.
+     */
     private static JPanel buildWaitPanel(int port,
                                           JLabel statusLbl, Connection[] connRef,
                                           Runnable onCancel) {
@@ -162,6 +199,7 @@ public class Dara {
         panel.setBorder(BorderFactory.createCompoundBorder(
             new LineBorder(BORDER, 1), new EmptyBorder(32, 44, 32, 44)));
 
+        // Barra de progresso indeterminada — indica atividade sem percentual definido
         JProgressBar bar = new JProgressBar();
         bar.setIndeterminate(true);
         bar.setPreferredSize(new Dimension(280, 6));
@@ -182,6 +220,7 @@ public class Dara {
         cancelBtn.setFocusPainted(false);
         cancelBtn.setBorder(new EmptyBorder(8, 24, 8, 24));
         cancelBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        // Cancelar: sinaliza a Connection para parar e volta ao formulário
         cancelBtn.addActionListener(e -> {
             if (connRef[0] != null) connRef[0].cancel();
             onCancel.run();
@@ -208,6 +247,7 @@ public class Dara {
 
     // ── Helpers de UI ────────────────────────────────────────────────────────
 
+    /** Cria um campo de texto com estilo escuro padrão do projeto. */
     static JTextField styledField(String text) {
         JTextField f = new JTextField(text, 20);
         f.setBackground(new Color(22, 27, 42));
@@ -219,6 +259,7 @@ public class Dara {
         return f;
     }
 
+    /** Cria um botão com cor de destaque (azul). */
     static JButton accentButton(String text) {
         JButton btn = new JButton(text);
         btn.setFont(new Font("SansSerif", Font.BOLD, 14));
@@ -232,6 +273,7 @@ public class Dara {
         return btn;
     }
 
+    /** Adiciona uma linha de label + campo ao formulário com GridBagLayout. */
     private static void addFormRow(JPanel p, GridBagConstraints g,
                                    int row, String label, JComponent field) {
         JLabel lbl = new JLabel(label);
