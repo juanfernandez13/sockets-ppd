@@ -498,6 +498,7 @@ public class GameWindow extends JFrame {
      * winner = número do jogador vencedor (1 ou 2), ou 0 para empate.
      */
     private void triggerGameOver(int winner, String reason) {
+        connection.cancel();
         logic.setPhase(GameLogic.Phase.GAMEOVER);
         String result = (winner == myPlayer) ? "Você venceu!" :
                         (winner == 0)        ? "Empate!"      : "Você perdeu!";
