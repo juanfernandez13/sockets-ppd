@@ -328,9 +328,11 @@ public class GameWindow extends JFrame {
     private void dispatch(String msg) {
         if (msg.equals("ROOM_FULL")) {
             // Sala já tem 2 jogadores — volta para a tela inicial
+            logic.setPhase(GameLogic.Phase.GAMEOVER); // impede onDisconnected de agir
             JOptionPane.showMessageDialog(this,
                 "<html><b>Sala cheia!</b><br>Já há 2 jogadores conectados nesta partida.</html>",
                 "Sala Cheia", JOptionPane.ERROR_MESSAGE);
+            connection.cancel();
             dispose();
             Dara.showLaunchDialog();
             return;
